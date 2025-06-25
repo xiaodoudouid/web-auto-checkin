@@ -1,0 +1,46 @@
+{
+    "global": {
+        "timeout": 30,
+        "retry_times": 3,
+        "log_level": "INFO"
+    },
+    "sites": [
+        {
+            "name": "V2EX",
+            "type": "v2ex",
+            "plugin": "v2ex",
+            "config": {
+                "cookies": {
+                    "PB3_SESSION": "your_session_cookie_here",
+                    "v2ex_tabs": "your_tabs_cookie_here"
+                }
+            }
+        },
+        {
+            "name": "Lixianla",
+            "type": "lixianla",
+            "plugin": "lixianla",
+            "config": {
+                "username": "your_username",
+                "password": "your_password"
+            }
+        },
+        {
+            "name": "自定义网站",
+            "type": "custom",
+            "plugin": "custom",
+            "config": {
+                "base_url": "https://example.com",
+                "login_url": "/login",
+                "checkin_url": "/checkin",
+                "login_method": "post",
+                "login_data": {
+                    "username": "your_username",
+                    "password": "your_password"
+                },
+                "checkin_method": "get",
+                "success_keywords": ["签到成功", "积分增加"]
+            }
+        }
+    ]
+}

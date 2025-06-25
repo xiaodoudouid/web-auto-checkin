@@ -14,105 +14,131 @@ class LixianlaPlugin(BasePlugin):
         self.base_url = "https://lixianla.com"
         self.username = site_config.get('config', {}).get('username', '')
         self.password = site_config.get('config', {}).get('password', '')
-        # OCR配置
-        self.ocr_lang = "eng"  # 英文识别（验证码通常为字母数字）
+        # OCR配置（增强数字字母识别）
+        self.ocr_lang = "eng"
         self.ocr_config = "--psm 8 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        self.captcha_attempts = 3  # 验证码重试次数
     
     async def login(self) -> bool:
-        """带验证码的登录实现"""
-        try:
-            # 获取登录页面
-            login_url = f"{self.base_url}/user-login.htm"
-            async with self.session.get(login_url) as response:
-                if response.status != 200:
-                    raise Exception(f"获取登录页面失败，状态码: {response.status}")
-                text = await response.text()
-                soup = BeautifulSoup(text, 'html.parser')
-                
-                # 查找CSRF令牌
-                csrf_token = None
-                csrf_input = soup.find('input', {'name': '_token'})
-                if csrf_input:
-                    csrf_token = csrf_input.get('value')
-                
-                # 查找验证码图片
-                captcha_img = soup.find('img', {'id': 'captcha-img'})  # 根据实际页面调整
-                if not captcha_img:
-                    captcha_img = soup.find('img', {'class': 'captcha'})  # 备用选择器
+        """带验证码的登录实现（含重试机制）"""
+        for attempt in range(self.captcha_attempts):
+            try:
+                # 获取登录页面
+                login_url = f"{self.base_url}/user-login.htm"
+                async with self.session.get(login_url) as response:
+                    if response.status != 200:
+                        raise Exception(f"获取登录页面失败，状态码: {response.status}")
+                    text = await response.text()
+                    soup = BeautifulSoup(text, 'html.parser')
                     
-                if not captcha_img:
-                    logging.warning("未找到验证码图片，尝试无验证码登录")
-                else:
-                    captcha_url = captcha_img.get('src')
-                    if not captcha_url.startswith('http'):
-                        captcha_url = f"{self.base_url}{captcha_url}"
+                    # 查找CSRF令牌
+                    csrf_token = self._get_csrf_token(soup)
                     
-                    # 下载验证码图片
-                    async with self.session.get(captcha_url) as captcha_response:
-                        if captcha_response.status != 200:
-                            raise Exception(f"获取验证码图片失败，状态码: {captcha_response.status}")
-                        
-                        captcha_bytes = await captcha_response.read()
-                        captcha_text = self.recognize_captcha(captcha_bytes)
-                        logging.info(f"识别的验证码: {captcha_text}")
-            
-            # 准备登录数据
-            login_data = {
-                'email': self.username,
-                'password': self.password,
-                'remember': 'on'
-            }
-            
-            # 添加验证码（如果有）
-            if 'captcha_text' in locals():
-                login_data['captcha'] = captcha_text  # 根据实际表单字段名调整
-            
-            # 添加CSRF令牌（如果有）
-            if csrf_token:
-                login_data['_token'] = csrf_token
-            
-            # 提交登录请求
-            async with self.session.post(login_url, data=login_data) as response:
-                if response.status != 200:
-                    raise Exception(f"登录请求失败，状态码: {response.status}")
+                    # 查找验证码图片
+                    captcha_img, captcha_url = self._get_captcha_url(soup)
+                    if not captcha_url:
+                        logging.info("未检测到验证码，尝试无验证码登录")
+                        captcha_text = ""
+                    else:
+                        # 下载验证码图片
+                        captcha_text = await self._recognize_captcha(captcha_url)
+                        if not captcha_text:
+                            logging.warning(f"第{attempt+1}次验证码识别失败，重试中...")
+                            continue
                 
-                response_text = await response.text()
-                if "用户中心" in response_text or "个人中心" in response_text:
-                    logging.info(f"{self.name} 登录成功")
-                    return True
-                else:
-                    logging.error(f"{self.name} 登录失败: {response_text}")
-                    return False
+                # 准备登录数据
+                login_data = {
+                    'email': self.username,
+                    'password': self.password,
+                    'remember': 'on'
+                }
+                
+                # 添加验证码和CSRF
+                if captcha_text:
+                    login_data['verify_code'] = captcha_text  # 假设实际字段为verify_code
+                if csrf_token:
+                    login_data['_token'] = csrf_token
+                
+                logging.info(f"登录数据: {login_data}")  # 打印提交的登录数据
+                
+                # 提交登录请求
+                async with self.session.post(login_url, data=login_data) as response:
+                    if response.status != 200:
+                        raise Exception(f"登录请求失败，状态码: {response.status}")
+                    
+                    response_text = await response.text()
+                    if "用户中心" in response_text or "个人中心" in response_text:
+                        logging.info(f"{self.name} 登录成功（尝试{attempt+1}次）")
+                        return True
+                    elif "验证码错误" in response_text:
+                        logging.warning(f"第{attempt+1}次验证码错误，重试中...")
+                    else:
+                        logging.error(f"登录失败: {response_text[:200]}")
+                        return False
+            
+            except Exception as e:
+                logging.error(f"登录尝试{attempt+1}异常: {str(e)}")
         
-        except Exception as e:
-            logging.error(f"{self.name} 登录异常: {str(e)}")
-            return False
+        logging.error(f"{self.name} 登录失败（{self.captcha_attempts}次验证码尝试均失败）")
+        return False
     
-    def recognize_captcha(self, captcha_bytes: bytes) -> str:
-        """识别验证码图片"""
+    def _get_csrf_token(self, soup: BeautifulSoup) -> str:
+        """获取CSRF令牌（支持多种可能的字段名）"""
+        csrf_input = soup.find('input', {'name': ['_token', 'csrf_token', 'token']})
+        return csrf_input.get('value') if csrf_input else ""
+    
+    def _get_captcha_url(self, soup: BeautifulSoup) -> (BeautifulSoup, str):
+        """获取验证码图片URL（支持多种选择器）"""
+        selectors = [
+            ('img', {'id': 'captcha-img'}),
+            ('img', {'class': 'captcha-image'}),
+            ('img', {'alt': '验证码'})
+        ]
+        
+        for tag, attrs in selectors:
+            img = soup.find(tag, attrs)
+            if img:
+                url = img.get('src')
+                if url and not url.startswith('http'):
+                    url = f"{self.base_url}{url}"
+                return img, url
+        return None, ""
+    
+    async def _recognize_captcha(self, captcha_url: str) -> str:
+        """识别验证码（含图片预处理）"""
         try:
-            # 打开图片并预处理
-            img = Image.open(BytesIO(captcha_bytes))
-            
-            # 转换为灰度图
-            img = img.convert('L')
-            
-            # 简单降噪（阈值处理）
-            img = img.point(lambda x: 0 if x < 128 else 255, '1')
-            
-            # 使用Tesseract识别
-            text = pytesseract.image_to_string(img, lang=self.ocr_lang, config=self.ocr_config)
-            return text.strip().upper()  # 转为大写并去除空格
+            async with self.session.get(captcha_url) as response:
+                if response.status != 200:
+                    raise Exception(f"获取验证码图片失败，状态码: {response.status}")
+                
+                captcha_bytes = await response.read()
+                img = Image.open(BytesIO(captcha_bytes))
+                
+                # 增强处理（灰度化、降噪、锐化）
+                img = img.convert('L')  # 灰度化
+                img = img.point(lambda p: p > 180 and 255)  # 高阈值去噪
+                img = img.filter(ImageFilter.SHARPEN)  # 锐化
+                
+                # 保存图片用于调试（GitHub Actions中可查看）
+                with open(f"captcha_{int(time.time())}.png", "wb") as f:
+                    img.save(f)
+                
+                # 识别验证码
+                text = pytesseract.image_to_string(img, lang=self.ocr_lang, config=self.ocr_config)
+                text = text.strip().upper()  # 标准化处理
+                
+                logging.info(f"识别的验证码: {text}")
+                return text if len(text) >= 4 else ""  # 至少4位有效字符
         
         except Exception as e:
-            logging.error(f"验证码识别失败: {str(e)}")
+            logging.error(f"验证码识别异常: {str(e)}")
             return ""
     
     async def checkin(self) -> Dict[str, Any]:
-        """执行签到"""
+        """执行签到（含验证码处理）"""
         try:
-            # 检查是否需要验证码
-            async with self.session.get(f"{self.base_url}/user/checkin") as response:
+            checkin_url = f"{self.base_url}/user/checkin"
+            async with self.session.get(checkin_url) as response:
                 if response.status != 200:
                     raise Exception(f"获取签到页面失败，状态码: {response.status}")
                 
@@ -120,35 +146,19 @@ class LixianlaPlugin(BasePlugin):
                 soup = BeautifulSoup(text, 'html.parser')
                 
                 # 检查是否需要验证码
-                captcha_required = bool(soup.find('img', {'id': 'checkin-captcha'}))
-                
-                if captcha_required:
-                    logging.info("签到需要验证码，尝试识别")
-                    captcha_img = soup.find('img', {'id': 'checkin-captcha'})
-                    captcha_url = captcha_img.get('src')
-                    if not captcha_url.startswith('http'):
-                        captcha_url = f"{self.base_url}{captcha_url}"
-                    
-                    # 下载验证码图片
-                    async with self.session.get(captcha_url) as captcha_response:
-                        captcha_bytes = await captcha_response.read()
-                        captcha_text = self.recognize_captcha(captcha_bytes)
-                        logging.info(f"识别的签到验证码: {captcha_text}")
+                captcha_img, captcha_url = self._get_captcha_url(soup)
+                captcha_text = await self._recognize_captcha(captcha_url) if captcha_url else ""
                 
                 # 执行签到
                 checkin_data = {}
-                if captcha_required:
-                    checkin_data['captcha'] = captcha_text
+                if captcha_text:
+                    checkin_data['verify_code'] = captcha_text  # 假设签到验证码字段
                 
-                async with self.session.post(
-                    f"{self.base_url}/user/checkin",
-                    data=checkin_data
-                ) as response:
+                async with self.session.post(checkin_url, data=checkin_data) as response:
                     if response.status != 200:
                         raise Exception(f"签到请求失败，状态码: {response.status}")
                     
                     result = await response.json()
-                    
                     if result.get('ret') == 1:
                         logging.info(f"{self.name} 签到成功: {result.get('msg')}")
                         return {"success": True, "message": result.get('msg')}

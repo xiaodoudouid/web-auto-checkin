@@ -1,43 +1,114 @@
-# 网站批量自动签到脚本
+# GitHub Actions 自动签到脚本
 
-## 功能介绍
+这是一个使用 GitHub Actions 实现的自动签到脚本，可以定期对多个网站进行自动签到，并支持通过邮件或 Telegram 发送签到结果通知。项目采用模块化设计，支持轻松添加新的网站支持。
 
-这是一个可以批量对多个网站进行自动签到的脚本，支持自定义扩展，目前已支持V2EX、GitHub等网站。脚本采用异步方式执行，提高签到效率，同时提供完善的日志记录和结果反馈。
+## 功能特点
 
-## 安装依赖
-pip install aiohttp beautifulsoup4
+- 支持多种网站自动签到（V2EX、Lixianla、HnHost等）
+- 使用 GitHub Actions 实现定时任务，无需本地运行
+- 支持多种通知方式（邮件、Telegram）
+- 模块化设计，易于扩展新网站
+- 详细的日志记录和错误处理
+
+## 支持的网站
+
+目前支持以下网站的自动签到：
+- V2EX
+- Lixianla
+- HnHost
+- 更多网站可以通过添加插件支持
+
 ## 使用方法
 
-1. 复制`config.json.example`为`config.json`
-2. 根据需要修改配置文件，添加要签到的网站信息
-3. 运行脚本：`python main.py`
+### 1. Fork 仓库
 
-## 配置说明
+首先，点击页面右上角的 "Fork" 按钮，将本仓库复制到你的 GitHub 账户下。
 
-配置文件结构如下：
+### 2. 配置 Secrets
+
+在你的仓库页面，依次点击 "Settings" > "Secrets" > "New repository secret"，添加以下 Secrets：
+
+| Secret 名称          | 描述                                                                 |
+|----------------------|---------------------------------------------------------------------|
+| CONFIG               | 你的配置文件内容（JSON格式），包含所有需要签到的网站信息                          |
+| EMAIL_HOST           | 邮件服务器地址（如使用邮件通知）                                       |
+| EMAIL_PORT           | 邮件服务器端口（如使用邮件通知）                                       |
+| EMAIL_USER           | 发件人邮箱（如使用邮件通知）                                         |
+| EMAIL_PASSWORD       | 发件人邮箱密码或授权码（如使用邮件通知）                               |
+| EMAIL_RECIPIENTS     | 收件人邮箱列表，逗号分隔（如使用邮件通知）                              |
+| TELEGRAM_BOT_TOKEN   | Telegram Bot Token（如使用 Telegram 通知）                            |
+| TELEGRAM_CHAT_ID     | Telegram 聊天 ID（如使用 Telegram 通知）                              |
+
+### 3. 配置签到任务
+
+默认情况下，签到任务会每天 UTC 时间 00:00 执行。你可以通过修改 `.github/workflows/checkin.yml` 文件来调整执行时间。
+
+### 4. 启用 GitHub Actions
+
+在你的仓库页面，点击 "Actions" 标签，然后点击绿色按钮启用 GitHub Actions。
+
+## 配置文件示例
+
+配置文件采用 JSON 格式，示例如下：
 {
     "global": {
-        "timeout": 30,  # 全局超时时间(秒)
-        "retry_times": 3  # 失败重试次数
+        "timeout": 30,
+        "retry_times": 3,
+        "log_level": "INFO"
     },
     "sites": [
         {
-            "name": "网站名称",
-            "type": "网站类型",
-            # 其他网站特定配置
+            "name": "V2EX",
+            "type": "v2ex",
+            "config": {
+                "cookies": {
+                    "PB3_SESSION": "your_session_cookie",
+                    "v2ex_tabs": "your_tabs_cookie"
+                }
+            }
+        },
+        {
+            "name": "Lixianla",
+            "type": "lixianla",
+            "config": {
+                "username": "your_username",
+                "password": "your_password"
+            }
         }
     ]
 }
-## 扩展支持
+## 添加新网站支持
 
-如果你想添加对新网站的支持，可以按照以下步骤操作：
+要添加新网站的支持，只需创建一个新的插件文件并实现必要的接口：
 
-1. 在`checkin_sites.py`中创建新的签到类，继承自`BaseCheckin`
-2. 实现`login`和`checkin`方法
-3. 在`SUPPORTED_SITES`字典中注册新的签到类
+1. 在 `plugins` 目录下创建新文件，例如 `new_site.py`
+2. 实现插件类，继承自 `BasePlugin`
+3. 实现 `login` 和 `checkin` 方法
+4. 添加 `register_plugin` 函数返回你的插件类
 
-## 定时任务
+详细示例请参考现有插件文件。
 
-你可以使用系统的定时任务功能(如crontab)来定期执行签到脚本：
-# 每天早上8点执行签到
-0 8 * * * cd /path/to/script && python3 main.py    
+## 通知设置
+
+### 邮件通知
+
+要启用邮件通知，需要配置以下 Secrets：
+- EMAIL_HOST
+- EMAIL_PORT
+- EMAIL_USER
+- EMAIL_PASSWORD
+- EMAIL_RECIPIENTS
+
+### Telegram 通知
+
+要启用 Telegram 通知，需要配置以下 Secrets：
+- TELEGRAM_BOT_TOKEN
+- TELEGRAM_CHAT_ID
+
+## 注意事项
+
+- 请确保你的配置信息安全，不要在公开仓库中泄露敏感信息
+- 部分网站可能有反爬虫机制，过于频繁的请求可能导致账号被封禁
+- 建议合理设置签到频率，避免对网站造成不必要的负担
+- 本项目仅供学习交流使用，请遵守相关网站的使用条款
+    

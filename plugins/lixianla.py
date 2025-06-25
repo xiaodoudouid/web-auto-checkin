@@ -14,7 +14,7 @@ class LixianlaPlugin(BasePlugin):
     async def login(self):
         try:
             # 获取登录页面的CSRF令牌
-            async with self.session.get(f"{self.base_url}/auth/login") as response:
+            async with self.session.get(f"{self.base_url}/user-login.htm") as response:
                 if response.status != 200:
                     raise Exception(f"获取登录页面失败，状态码: {response.status}")
                 text = await response.text()

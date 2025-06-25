@@ -1,6 +1,7 @@
 import aiohttp
 import asyncio
 import logging
+from typing import Dict, Any
 from bs4 import BeautifulSoup
 from plugins.base_plugin import BasePlugin
 

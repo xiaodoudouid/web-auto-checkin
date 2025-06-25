@@ -1,0 +1,8 @@
+// config.example.json
+{
+    "global": {
+        "timeout": 30,
+        "retry_times": 3
+    },
+    "sites": []
+}

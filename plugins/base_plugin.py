@@ -13,7 +13,7 @@ class BasePlugin(ABC):
             timeout=aiohttp.ClientTimeout(total=global_config.get('timeout', 30))
         )
     
-    def get_headers(self):
+    def get_headers(self) -> Dict[str, str]:
         """获取通用请求头"""
         return {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -46,4 +46,4 @@ class BasePlugin(ABC):
             logging.error(f"{self.name} 签到过程中发生异常: {str(e)}")
             return {"success": False, "message": f"发生异常: {str(e)}", "site": self.name}
         finally:
-            await self.session.close()    
+            await self.session.close()

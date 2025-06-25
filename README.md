@@ -14,7 +14,7 @@
 
 目前支持以下网站的自动签到：
 - V2EX
-- Lixianla https://lixianla.com
+- [Lixianla](https://lixianla.com)
 - HnHost
 - 更多网站可以通过添加插件支持
 

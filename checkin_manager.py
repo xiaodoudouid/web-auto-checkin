@@ -1,37 +1,41 @@
-import importlib
+import os
+import json
 import logging
 import asyncio
+import importlib
 from typing import Dict, List, Any
 
-
-# checkin_manager.py
-
-def load_plugins(self):
-    """加载所有可用的签到插件"""
-    import os
-    plugin_dir = os.path.join(os.path.dirname(__file__), 'plugins')
-    logging.info(f"开始加载插件，插件目录: {plugin_dir}")
+class CheckinManager:
+    def __init__(self, config: Dict[str, Any]):
+        self.global_config = config.get('global', {})
+        self.site_configs = config.get('sites', [])
+        self.plugins = {}
+        self.load_plugins()
     
-    for filename in os.listdir(plugin_dir):
-        if filename.endswith('.py') and not filename.startswith('__'):
-            plugin_name = filename[:-3]
-            logging.info(f"尝试加载插件: {plugin_name}")
-            
-            try:
-                plugin_module = importlib.import_module(f'plugins.{plugin_name}')
-                if hasattr(plugin_module, 'register_plugin'):
-                    plugin_class = plugin_module.register_plugin()
-                    self.plugins[plugin_name] = plugin_class
-                    logging.info(f"成功加载插件: {plugin_name}，注册类型: {plugin_name}")
-                else:
-                    logging.warning(f"插件 {plugin_name} 缺少 register_plugin 函数")
-            except Exception as e:
-                logging.error(f"加载插件 {plugin_name} 失败: {str(e)}")
+    def load_plugins(self) -> None:
+        """加载所有可用的签到插件"""
+        plugin_dir = os.path.join(os.path.dirname(__file__), 'plugins')
+        logging.info(f"开始加载插件，插件目录: {plugin_dir}")
+        
+        for filename in os.listdir(plugin_dir):
+            if filename.endswith('.py') and not filename.startswith('__'):
+                plugin_name = filename[:-3]
+                logging.info(f"尝试加载插件: {plugin_name}")
+                
+                try:
+                    plugin_module = importlib.import_module(f'plugins.{plugin_name}')
+                    if hasattr(plugin_module, 'register_plugin'):
+                        plugin_class = plugin_module.register_plugin()
+                        self.plugins[plugin_name] = plugin_class
+                        logging.info(f"成功加载插件: {plugin_name}，注册类型: {plugin_name}")
+                    else:
+                        logging.warning(f"插件 {plugin_name} 缺少 register_plugin 函数")
+                except Exception as e:
+                    logging.error(f"加载插件 {plugin_name} 失败: {str(e)}")
+        
+        logging.info(f"已加载的插件: {list(self.plugins.keys())}")
     
-    # 打印已加载的插件列表
-    logging.info(f"已加载的插件: {list(self.plugins.keys())}")
-    
-    async def run_all_checkins(self):
+    async def run_all_checkins(self) -> List[Dict[str, Any]]:
         """运行所有配置的网站签到任务"""
         results = []
         tasks = []
@@ -48,4 +52,4 @@ def load_plugins(self):
         if tasks:
             results = await asyncio.gather(*tasks)
         
-        return results    
+        return results

@@ -1,3 +1,6 @@
+git add plugins/lixianla.py
+git commit -m "修复Lixianla插件的类型导入问题"
+git push
 import aiohttp
 import asyncio
 import logging
